@@ -44,7 +44,7 @@
 #include "et_stm32f_arm_kit_lcd.h"
 #include <string.h>
 
-#define PERIOD 1000
+#define PERIOD 10000
 
 /* USER CODE END Includes */
 
@@ -54,17 +54,24 @@ ADC_HandleTypeDef hadc2;
 
 SPI_HandleTypeDef hspi3;
 
-TIM_HandleTypeDef htim4;
+TIM_HandleTypeDef htim3;
 
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
 /* Private variables ---------------------------------------------------------*/
 typedef struct {
-	float r;	/* R : PD12 */
-	float g;	/* G : PD13 */
-	float b;	/* B : PD14 */
+	float r;	/* R : PA7 */
+	float g;	/* G : PB0 */
+	float b;	/* B : PB1 */
 } RGB;
+
+RGB color[] = {
+	{0, 0, 0},	/* WHITE */
+	{1, 0, 0},	/* RED */
+	{0, 1, 0},	/* GREEN */
+	{0, 0, 1}	/* BLUE */
+};
 
 uint16_t led_hex[] = {0x0000, 0x0100, 0x0300, 0x0700, 0x0f00, 0x1f00, 0x3f00, 0x7f00, 0xff00};
 
@@ -75,9 +82,9 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_ADC1_Init(void);
-static void MX_TIM4_Init(void);
 static void MX_ADC2_Init(void);
 static void MX_SPI3_Init(void);
+static void MX_TIM3_Init(void);
 
 void HAL_TIM_MspPostInit(TIM_HandleTypeDef *htim);
                                 
@@ -85,8 +92,8 @@ void HAL_TIM_MspPostInit(TIM_HandleTypeDef *htim);
 /* USER CODE BEGIN PFP */
 /* Private function prototypes -----------------------------------------------*/
 void RGB_PWM(RGB*);
-void USART_LOG(RGB*, uint16_t, uint16_t);
-void LED_LOG(uint16_t);
+void UART_TRAN(char*);
+
 /* USER CODE END PFP */
 
 /* USER CODE BEGIN 0 */
@@ -106,7 +113,8 @@ int main(void)
   HAL_Init();
 
   /* USER CODE BEGIN Init */
-	RGB rgb = {1, 1, 1};
+	uint16_t color_index = 1;
+	RGB rgb = color[color_index];
 
 	volatile uint16_t ird_val;	/* Infrared Distance : PC4 */
 	uint16_t ird_level;
@@ -114,6 +122,7 @@ int main(void)
 	uint16_t fsr_level;
 
 	uint16_t posX, posY;
+	char str[80];
 
   /* USER CODE END Init */
 
@@ -128,9 +137,9 @@ int main(void)
   MX_GPIO_Init();
   MX_USART2_UART_Init();
   MX_ADC1_Init();
-  MX_TIM4_Init();
   MX_ADC2_Init();
   MX_SPI3_Init();
+  MX_TIM3_Init();
 
   /* USER CODE BEGIN 2 */
 	HAL_ADCEx_Calibration_Start(&hadc1);
@@ -151,26 +160,28 @@ int main(void)
   /* USER CODE END WHILE */
 
   /* USER CODE BEGIN 3 */
+
+	/* READ COLOR FROM LCD */
 	posX = TCS_Read_X();
 	posY = TCS_Read_Y();
-
+	  
+	/* READ BRIGHTNESS FROM IRD */ 
 	while ( HAL_ADC_PollForConversion(&hadc1, 100) != HAL_OK ) {}
 	ird_val = HAL_ADC_GetValue(&hadc1);
+
 	ird_level = ird_val / ((4096/9)+1);
 	GPIOE->ODR = led_hex[ird_level];
-	rgb.r = ird_level/8.0;
-	rgb.g = ird_level/8.0;
-	rgb.b = ird_level/8.0;
+	rgb.r = color[color_index].r * (ird_level/8.0);
+	rgb.g = color[color_index].g * (ird_level/8.0);
+	rgb.b = color[color_index].b * (ird_level/8.0);
 
 	while ( HAL_ADC_PollForConversion(&hadc2, 100) != HAL_OK ) {}
 	fsr_val = HAL_ADC_GetValue(&hadc2);
 
 	RGB_PWM(&rgb);
 
-	char str[80];
 	sprintf(str, "R:%4.2f, G:%4.2f, B:%4.2f, IRD:0x%03X, %1d FSR:0x%03X, %1d.\r\n", rgb.r, rgb.g, rgb.b, ird_val, ird_level, fsr_val, fsr_level);
-	while(__HAL_UART_GET_FLAG(&huart2, UART_FLAG_TC) == RESET) {}
-	HAL_UART_Transmit(&huart2, (uint8_t*)str, strlen(str), 100);
+	UART_TRAN(str);
   }
   /* USER CODE END 3 */
 
@@ -328,63 +339,63 @@ static void MX_SPI3_Init(void)
 
 }
 
-/* TIM4 init function */
-static void MX_TIM4_Init(void)
+/* TIM3 init function */
+static void MX_TIM3_Init(void)
 {
 
   TIM_ClockConfigTypeDef sClockSourceConfig;
   TIM_MasterConfigTypeDef sMasterConfig;
   TIM_OC_InitTypeDef sConfigOC;
 
-  htim4.Instance = TIM4;
-  htim4.Init.Prescaler = 72-1;
-  htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim4.Init.Period = 1000-1;
-  htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-  htim4.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
-  if (HAL_TIM_Base_Init(&htim4) != HAL_OK)
+  htim3.Instance = TIM3;
+  htim3.Init.Prescaler = 720-1;
+  htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim3.Init.Period = 10000-1;
+  htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim3) != HAL_OK)
   {
     _Error_Handler(__FILE__, __LINE__);
   }
 
   sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
-  if (HAL_TIM_ConfigClockSource(&htim4, &sClockSourceConfig) != HAL_OK)
+  if (HAL_TIM_ConfigClockSource(&htim3, &sClockSourceConfig) != HAL_OK)
   {
     _Error_Handler(__FILE__, __LINE__);
   }
 
-  if (HAL_TIM_PWM_Init(&htim4) != HAL_OK)
+  if (HAL_TIM_PWM_Init(&htim3) != HAL_OK)
   {
     _Error_Handler(__FILE__, __LINE__);
   }
 
   sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
   sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
-  if (HAL_TIMEx_MasterConfigSynchronization(&htim4, &sMasterConfig) != HAL_OK)
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim3, &sMasterConfig) != HAL_OK)
   {
     _Error_Handler(__FILE__, __LINE__);
   }
 
   sConfigOC.OCMode = TIM_OCMODE_PWM1;
-  sConfigOC.Pulse = (1000-1)/2;
+  sConfigOC.Pulse = (10000-1)/2;
   sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
   sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
-  if (HAL_TIM_PWM_ConfigChannel(&htim4, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
+  if (HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_2) != HAL_OK)
   {
     _Error_Handler(__FILE__, __LINE__);
   }
 
-  if (HAL_TIM_PWM_ConfigChannel(&htim4, &sConfigOC, TIM_CHANNEL_2) != HAL_OK)
+  if (HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_3) != HAL_OK)
   {
     _Error_Handler(__FILE__, __LINE__);
   }
 
-  if (HAL_TIM_PWM_ConfigChannel(&htim4, &sConfigOC, TIM_CHANNEL_3) != HAL_OK)
+  if (HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_4) != HAL_OK)
   {
     _Error_Handler(__FILE__, __LINE__);
   }
 
-  HAL_TIM_MspPostInit(&htim4);
+  HAL_TIM_MspPostInit(&htim3);
 
 }
 
@@ -423,6 +434,7 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOE_CLK_ENABLE();
   __HAL_RCC_GPIOC_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOB_CLK_ENABLE();
   __HAL_RCC_GPIOD_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
@@ -491,24 +503,22 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 void RGB_PWM(RGB* rgb) {
-	htim4.Instance->CCR1 = (PERIOD-1)*rgb->r;
-	htim4.Instance->CCR2 = (PERIOD-1)*rgb->g;
-	htim4.Instance->CCR3 = (PERIOD-1)*rgb->b;
-	HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_1);
-	HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_2);
-	HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_3);
+	htim3.Instance->CCR2 = (PERIOD-1)*rgb->r;
+	htim3.Instance->CCR3 = (PERIOD-1)*rgb->g;
+	htim3.Instance->CCR4 = (PERIOD-1)*rgb->b;
+
+	HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_2);
+	HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_3);
+	HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_4);
 	HAL_Delay(100);
-	HAL_TIM_PWM_Stop(&htim4, TIM_CHANNEL_1);
-	HAL_TIM_PWM_Stop(&htim4, TIM_CHANNEL_2);
-	HAL_TIM_PWM_Stop(&htim4, TIM_CHANNEL_3);
+	HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_2);
+	HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_3);
+	HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_4);
 }
 
-void USART_LOG(RGB* rgb, uint16_t ird_val, uint16_t fsr_val) {
-
-}
-
-void LED_LOG(uint16_t val) {
-
+void UART_TRAN(char* str) {
+	while(__HAL_UART_GET_FLAG(&huart2, UART_FLAG_TC) == RESET) {}
+	HAL_UART_Transmit(&huart2, (uint8_t*)str, strlen(str), 100);
 }
 
 /* USER CODE END 4 */
