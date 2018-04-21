@@ -41,6 +41,9 @@
 #include "stm32f1xx_hal.h"
 
 /* USER CODE BEGIN Includes */
+#include "et_stm32f_arm_kit_lcd.h"
+#include <string.h>
+
 #define PERIOD 1000
 
 /* USER CODE END Includes */
@@ -49,12 +52,21 @@
 ADC_HandleTypeDef hadc1;
 ADC_HandleTypeDef hadc2;
 
+SPI_HandleTypeDef hspi3;
+
 TIM_HandleTypeDef htim4;
 
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
 /* Private variables ---------------------------------------------------------*/
+typedef struct {
+	float r;	/* R : PD12 */
+	float g;	/* G : PD13 */
+	float b;	/* B : PD14 */
+} RGB;
+
+uint16_t led_hex[] = {0x0000, 0x0100, 0x0300, 0x0700, 0x0f00, 0x1f00, 0x3f00, 0x7f00, 0xff00};
 
 /* USER CODE END PV */
 
@@ -65,21 +77,19 @@ static void MX_USART2_UART_Init(void);
 static void MX_ADC1_Init(void);
 static void MX_TIM4_Init(void);
 static void MX_ADC2_Init(void);
+static void MX_SPI3_Init(void);
 
 void HAL_TIM_MspPostInit(TIM_HandleTypeDef *htim);
                                 
 
 /* USER CODE BEGIN PFP */
 /* Private function prototypes -----------------------------------------------*/
-void USART_IR(uint16_t);
+void RGB_PWM(RGB*);
+void USART_LOG(RGB*, uint16_t, uint16_t);
+void LED_LOG(uint16_t);
 /* USER CODE END PFP */
 
 /* USER CODE BEGIN 0 */
-typedef struct {
-	float r;	/* R : PD12 */
-	float g;	/* G : PD13 */
-	float b;	/* B : PD14 */
-} RGB;
 
 /* USER CODE END 0 */
 
@@ -99,7 +109,11 @@ int main(void)
 	RGB rgb = {1, 1, 1};
 
 	volatile uint16_t ird_val;	/* Infrared Distance : PC4 */
+	uint16_t ird_level;
 	volatile uint16_t fsr_val;	/* Force Sensitive Resistor : PC5 */
+	uint16_t fsr_level;
+
+	uint16_t posX, posY;
 
   /* USER CODE END Init */
 
@@ -116,10 +130,17 @@ int main(void)
   MX_ADC1_Init();
   MX_TIM4_Init();
   MX_ADC2_Init();
+  MX_SPI3_Init();
 
   /* USER CODE BEGIN 2 */
 	HAL_ADCEx_Calibration_Start(&hadc1);
 	HAL_ADC_Start(&hadc1);
+
+	HAL_ADCEx_Calibration_Start(&hadc2);
+	HAL_ADC_Start(&hadc2);
+
+	LCD_Setup();
+	LCD_Clear(Blue);
 
   /* USER CODE END 2 */
 
@@ -130,23 +151,26 @@ int main(void)
   /* USER CODE END WHILE */
 
   /* USER CODE BEGIN 3 */
+	posX = TCS_Read_X();
+	posY = TCS_Read_Y();
+
 	while ( HAL_ADC_PollForConversion(&hadc1, 100) != HAL_OK ) {}
 	ird_val = HAL_ADC_GetValue(&hadc1);
-	USART_IR(ird_val);
-		
+	ird_level = ird_val / ((4096/9)+1);
+	GPIOE->ODR = led_hex[ird_level];
+	rgb.r = ird_level/8.0;
+	rgb.g = ird_level/8.0;
+	rgb.b = ird_level/8.0;
+
 	while ( HAL_ADC_PollForConversion(&hadc2, 100) != HAL_OK ) {}
 	fsr_val = HAL_ADC_GetValue(&hadc2);
-		
-	htim4.Instance->CCR1 = (PERIOD-1)*rgb.r;
-	htim4.Instance->CCR2 = (PERIOD-1)*rgb.g;
-	htim4.Instance->CCR3 = (PERIOD-1)*rgb.b;
-	HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_1);
-	HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_2);
-	HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_3);
-	HAL_Delay(100);
-	HAL_TIM_PWM_Stop(&htim4, TIM_CHANNEL_1);
-	HAL_TIM_PWM_Stop(&htim4, TIM_CHANNEL_2);
-	HAL_TIM_PWM_Stop(&htim4, TIM_CHANNEL_3);		
+
+	RGB_PWM(&rgb);
+
+	char str[80];
+	sprintf(str, "R:%4.2f, G:%4.2f, B:%4.2f, IRD:0x%03X, %1d FSR:0x%03X, %1d.\r\n", rgb.r, rgb.g, rgb.b, ird_val, ird_level, fsr_val, fsr_level);
+	while(__HAL_UART_GET_FLAG(&huart2, UART_FLAG_TC) == RESET) {}
+	HAL_UART_Transmit(&huart2, (uint8_t*)str, strlen(str), 100);
   }
   /* USER CODE END 3 */
 
@@ -280,6 +304,30 @@ static void MX_ADC2_Init(void)
 
 }
 
+/* SPI3 init function */
+static void MX_SPI3_Init(void)
+{
+
+  /* SPI3 parameter configuration*/
+  hspi3.Instance = SPI3;
+  hspi3.Init.Mode = SPI_MODE_MASTER;
+  hspi3.Init.Direction = SPI_DIRECTION_2LINES;
+  hspi3.Init.DataSize = SPI_DATASIZE_8BIT;
+  hspi3.Init.CLKPolarity = SPI_POLARITY_HIGH;
+  hspi3.Init.CLKPhase = SPI_PHASE_2EDGE;
+  hspi3.Init.NSS = SPI_NSS_SOFT;
+  hspi3.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_2;
+  hspi3.Init.FirstBit = SPI_FIRSTBIT_MSB;
+  hspi3.Init.TIMode = SPI_TIMODE_DISABLE;
+  hspi3.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
+  hspi3.Init.CRCPolynomial = 10;
+  if (HAL_SPI_Init(&hspi3) != HAL_OK)
+  {
+    _Error_Handler(__FILE__, __LINE__);
+  }
+
+}
+
 /* TIM4 init function */
 static void MX_TIM4_Init(void)
 {
@@ -369,19 +417,100 @@ static void MX_USART2_UART_Init(void)
 static void MX_GPIO_Init(void)
 {
 
+  GPIO_InitTypeDef GPIO_InitStruct;
+
   /* GPIO Ports Clock Enable */
+  __HAL_RCC_GPIOE_CLK_ENABLE();
   __HAL_RCC_GPIOC_CLK_ENABLE();
+  __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOD_CLK_ENABLE();
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOE, GPIO_PIN_5|GPIO_PIN_6|GPIO_PIN_7|GPIO_PIN_8 
+                          |GPIO_PIN_9|GPIO_PIN_10|GPIO_PIN_11|GPIO_PIN_12 
+                          |GPIO_PIN_13|GPIO_PIN_14|GPIO_PIN_15, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_8, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOD, GPIO_PIN_7, GPIO_PIN_RESET);
+
+  /*Configure GPIO pins : PE3 PE4 */
+  GPIO_InitStruct.Pin = GPIO_PIN_3|GPIO_PIN_4;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : PE5 PE6 PE7 */
+  GPIO_InitStruct.Pin = GPIO_PIN_5|GPIO_PIN_6|GPIO_PIN_7;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : PC13 */
+  GPIO_InitStruct.Pin = GPIO_PIN_13;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : PA0 */
+  GPIO_InitStruct.Pin = GPIO_PIN_0;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : PE8 PE9 PE10 PE11 
+                           PE12 PE13 PE14 PE15 */
+  GPIO_InitStruct.Pin = GPIO_PIN_8|GPIO_PIN_9|GPIO_PIN_10|GPIO_PIN_11 
+                          |GPIO_PIN_12|GPIO_PIN_13|GPIO_PIN_14|GPIO_PIN_15;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+  HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : PC8 */
+  GPIO_InitStruct.Pin = GPIO_PIN_8;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : PD7 */
+  GPIO_InitStruct.Pin = GPIO_PIN_7;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
+
+  /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI0_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI0_IRQn);
+
+  HAL_NVIC_SetPriority(EXTI15_10_IRQn, 1, 0);
+  HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
 
 }
 
 /* USER CODE BEGIN 4 */
-void USART_IR(uint16_t adc_val) {
-	char hex[8];
-	sprintf(hex, "0x%04X\r\n", adc_val);
-	while(__HAL_UART_GET_FLAG(&huart2, UART_FLAG_TC) == RESET) {}
-	HAL_UART_Transmit(&huart2, (uint8_t*)hex, 8, 100);
+void RGB_PWM(RGB* rgb) {
+	htim4.Instance->CCR1 = (PERIOD-1)*rgb->r;
+	htim4.Instance->CCR2 = (PERIOD-1)*rgb->g;
+	htim4.Instance->CCR3 = (PERIOD-1)*rgb->b;
+	HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_1);
+	HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_2);
+	HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_3);
+	HAL_Delay(100);
+	HAL_TIM_PWM_Stop(&htim4, TIM_CHANNEL_1);
+	HAL_TIM_PWM_Stop(&htim4, TIM_CHANNEL_2);
+	HAL_TIM_PWM_Stop(&htim4, TIM_CHANNEL_3);
 }
+
+void USART_LOG(RGB* rgb, uint16_t ird_val, uint16_t fsr_val) {
+
+}
+
+void LED_LOG(uint16_t val) {
+
+}
+
 /* USER CODE END 4 */
 
 /**
