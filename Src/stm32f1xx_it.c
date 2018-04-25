@@ -36,7 +36,7 @@
 #include "stm32f1xx_it.h"
 
 /* USER CODE BEGIN 0 */
-
+extern uint16_t sw_mode;
 /* USER CODE END 0 */
 
 /* External variables --------------------------------------------------------*/
@@ -193,7 +193,7 @@ void EXTI0_IRQHandler(void)
   /* USER CODE END EXTI0_IRQn 0 */
   HAL_GPIO_EXTI_IRQHandler(GPIO_PIN_0);
   /* USER CODE BEGIN EXTI0_IRQn 1 */
-
+	sw_mode = 0;
   /* USER CODE END EXTI0_IRQn 1 */
 }
 
@@ -207,7 +207,7 @@ void EXTI15_10_IRQHandler(void)
   /* USER CODE END EXTI15_10_IRQn 0 */
   HAL_GPIO_EXTI_IRQHandler(GPIO_PIN_13);
   /* USER CODE BEGIN EXTI15_10_IRQn 1 */
-
+	sw_mode = 1;
   /* USER CODE END EXTI15_10_IRQn 1 */
 }
 

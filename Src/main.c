@@ -50,7 +50,6 @@
 
 /* Private variables ---------------------------------------------------------*/
 ADC_HandleTypeDef hadc1;
-ADC_HandleTypeDef hadc2;
 
 SPI_HandleTypeDef hspi3;
 
@@ -66,14 +65,8 @@ typedef struct {
 	float b;	/* B : PB1 */
 } RGB;
 
-RGB color[] = {
-	{0, 0, 0},	/* WHITE */
-	{1, 0, 0},	/* RED */
-	{0, 1, 0},	/* GREEN */
-	{0, 0, 1}	/* BLUE */
-};
-
 uint16_t led_hex[] = {0x0000, 0x0100, 0x0300, 0x0700, 0x0f00, 0x1f00, 0x3f00, 0x7f00, 0xff00};
+uint16_t sw_mode = 0;
 
 /* USER CODE END PV */
 
@@ -82,7 +75,6 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_ADC1_Init(void);
-static void MX_ADC2_Init(void);
 static void MX_SPI3_Init(void);
 static void MX_TIM3_Init(void);
 
@@ -91,7 +83,8 @@ void HAL_TIM_MspPostInit(TIM_HandleTypeDef *htim);
 
 /* USER CODE BEGIN PFP */
 /* Private function prototypes -----------------------------------------------*/
-void RGB_PWM(RGB*);
+void delay(uint32_t ms);
+void RGB_PWM(RGB*, uint32_t);
 void UART_TRAN(char*);
 
 /* USER CODE END PFP */
@@ -113,16 +106,18 @@ int main(void)
   HAL_Init();
 
   /* USER CODE BEGIN Init */
-	uint16_t color_index = 1;
-	RGB rgb = color[color_index];
+	char str[80];
 
-	volatile uint16_t ird_val;	/* Infrared Distance : PC4 */
-	uint16_t ird_level;
+	RGB color;
+	RGB rgb = {1,1,1};
+
 	volatile uint16_t fsr_val;	/* Force Sensitive Resistor : PC5 */
 	uint16_t fsr_level;
+	uint16_t fsr_drive = 5;
+	uint16_t fsr_max = 0;
 
 	uint16_t posX, posY;
-	char str[80];
+	uint32_t pwm_delay = 1;
 
   /* USER CODE END Init */
 
@@ -137,7 +132,6 @@ int main(void)
   MX_GPIO_Init();
   MX_USART2_UART_Init();
   MX_ADC1_Init();
-  MX_ADC2_Init();
   MX_SPI3_Init();
   MX_TIM3_Init();
 
@@ -145,12 +139,29 @@ int main(void)
 	HAL_ADCEx_Calibration_Start(&hadc1);
 	HAL_ADC_Start(&hadc1);
 
-	HAL_ADCEx_Calibration_Start(&hadc2);
-	HAL_ADC_Start(&hadc2);
+	LCD_SetBackColor(Yellow);
 
 	LCD_Setup();
-	LCD_Clear(Blue);
-
+	LCD_Clear(Black);
+		LCD_SetTextColor(White);
+  LCD_DrawRect(0, 0, 80, 106);
+		LCD_SetTextColor(Green);
+	LCD_DrawRect(80, 0, 80, 106);
+		LCD_SetTextColor(Blue);
+	LCD_DrawRect(160, 0, 80, 106);
+		LCD_SetTextColor(Magenta);
+	LCD_DrawRect(0, 106, 80, 106);
+		LCD_SetTextColor(Yellow);
+	LCD_DrawRect(80, 106, 80, 106);
+		LCD_SetTextColor(Green2);
+	LCD_DrawRect(160, 106, 80, 106);
+		LCD_SetTextColor(Blue2);
+	LCD_DrawRect(0, 212, 80, 106);
+		LCD_SetTextColor(Cyan);
+	LCD_DrawRect(80, 212, 80, 106);
+		LCD_SetTextColor(Red);
+	LCD_DrawRect(160, 212, 80, 106);
+	
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -165,22 +176,108 @@ int main(void)
 	posX = TCS_Read_X();
 	posY = TCS_Read_Y();
 	  
+		if(posX!=0&&posY!=0){
+				if(posX<=106&&posY<=80){
+					//magenta
+					color.r = 1;
+					color.g = 0;
+					color.b = 0.5;
+				}
+				if(posX>106&&posX<=212&&posY<=80){
+					//blue2
+					color.r = 0;
+					color.g = 0;
+					color.b = 0.8;
+}
+				if(posX>212&&posY<=80){
+					//white
+					color.r = 1;
+					color.g = 1;
+					color.b = 1;
+}
+				if(posX<=106&&posY>80&&posY<=160){
+					//yellow
+					color.r = 1;
+					color.g = 1;
+					color.b = 0;
+				}
+				if(posX>106&&posX<=212&&posY>80&&posY<=160){
+					//cyan
+					color.r = 0;
+					color.g = 0;
+					color.b = 0.5;
+				}
+				if(posX>212&&posY>80&&posY<=160){
+					//green
+					color.r = 0;
+					color.g = 1;
+					color.b = 0;
+				}
+				if(posX<=106&&posY>160){
+					//green2
+					color.r = 0.8;
+					color.g = 0;
+					color.b = 0.8;
+				}
+				if(posX>106&&posX<=212&&posY>160){
+					//red
+					color.r = 1;
+					color.g = 0;
+					color.b = 0;
+				}
+				if(posX>212&&posY>160){
+					//blue
+					color.r = 0;
+					color.g = 0;
+					color.b = 1;
+				}
+				
+			}
 	/* READ BRIGHTNESS FROM IRD */ 
 	while ( HAL_ADC_PollForConversion(&hadc1, 100) != HAL_OK ) {}
-	ird_val = HAL_ADC_GetValue(&hadc1);
+	fsr_val = HAL_ADC_GetValue(&hadc1);
 
-	ird_level = ird_val / ((4096/9)+1);
-	GPIOE->ODR = led_hex[ird_level];
-	rgb.r = color[color_index].r * (ird_level/8.0);
-	rgb.g = color[color_index].g * (ird_level/8.0);
-	rgb.b = color[color_index].b * (ird_level/8.0);
+	fsr_level = fsr_val / ((4096/9)+1);
 
-	while ( HAL_ADC_PollForConversion(&hadc2, 100) != HAL_OK ) {}
-	fsr_val = HAL_ADC_GetValue(&hadc2);
+	if (fsr_level > 0 && fsr_max < fsr_level) {
+		fsr_max = fsr_level;
+	} else if (fsr_level == 0 && fsr_max != 0) {
+		fsr_drive = fsr_max;
+		if (fsr_drive > 5) {
+			fsr_drive = 5;
+		}
+		fsr_max = 0;
+	}
 
-	RGB_PWM(&rgb);
+	GPIOE->ODR =  led_hex[ (fsr_max == 0) ? fsr_drive : fsr_level ];
 
-	sprintf(str, "R:%4.2f, G:%4.2f, B:%4.2f, IRD:0x%03X, %1d FSR:0x%03X, %1d.\r\n", rgb.r, rgb.g, rgb.b, ird_val, ird_level, fsr_val, fsr_level);
+	if (sw_mode == 0) {
+		rgb.r = color.r * (fsr_drive/5.0);
+		rgb.g = color.g * (fsr_drive/5.0);
+		rgb.b = color.b * (fsr_drive/5.0);
+	} else {
+		switch (fsr_drive) {
+			case 1 :
+				pwm_delay = 100;
+			break;
+			case 2 :
+				pwm_delay = 50;
+			break;
+			case 3 :
+				pwm_delay = 10;
+			break;
+			case 4 :
+				pwm_delay = 5;
+			break;
+			case 5 :
+				pwm_delay = 1;
+			break;			
+		}
+	}
+
+	RGB_PWM(&rgb, pwm_delay);
+
+	sprintf(str, "R:%4.2f, G:%4.2f, B:%4.2f, Mode: %d, Drive: %d, FSR:0x%03X, Level:%1d, posX %d, posY %d.\r\n", rgb.r, rgb.g, rgb.b, sw_mode, fsr_drive, fsr_val, fsr_level, posX,posY);
 	UART_TRAN(str);
   }
   /* USER CODE END 3 */
@@ -277,38 +374,6 @@ static void MX_ADC1_Init(void)
   sConfig.Rank = 1;
   sConfig.SamplingTime = ADC_SAMPLETIME_1CYCLE_5;
   if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
-  {
-    _Error_Handler(__FILE__, __LINE__);
-  }
-
-}
-
-/* ADC2 init function */
-static void MX_ADC2_Init(void)
-{
-
-  ADC_ChannelConfTypeDef sConfig;
-
-    /**Common config 
-    */
-  hadc2.Instance = ADC2;
-  hadc2.Init.ScanConvMode = ADC_SCAN_DISABLE;
-  hadc2.Init.ContinuousConvMode = ENABLE;
-  hadc2.Init.DiscontinuousConvMode = DISABLE;
-  hadc2.Init.ExternalTrigConv = ADC_SOFTWARE_START;
-  hadc2.Init.DataAlign = ADC_DATAALIGN_RIGHT;
-  hadc2.Init.NbrOfConversion = 1;
-  if (HAL_ADC_Init(&hadc2) != HAL_OK)
-  {
-    _Error_Handler(__FILE__, __LINE__);
-  }
-
-    /**Configure Regular Channel 
-    */
-  sConfig.Channel = ADC_CHANNEL_15;
-  sConfig.Rank = 1;
-  sConfig.SamplingTime = ADC_SAMPLETIME_1CYCLE_5;
-  if (HAL_ADC_ConfigChannel(&hadc2, &sConfig) != HAL_OK)
   {
     _Error_Handler(__FILE__, __LINE__);
   }
@@ -502,7 +567,12 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-void RGB_PWM(RGB* rgb) {
+void delay(uint32_t ms) {
+	for (volatile uint32_t i=0; i<ms; ++i)
+		for(volatile uint32_t j=0; j<8000; j++);
+}
+
+void RGB_PWM(RGB* rgb, uint32_t ms) {
 	htim3.Instance->CCR2 = (PERIOD-1)*rgb->r;
 	htim3.Instance->CCR3 = (PERIOD-1)*rgb->g;
 	htim3.Instance->CCR4 = (PERIOD-1)*rgb->b;
@@ -510,7 +580,7 @@ void RGB_PWM(RGB* rgb) {
 	HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_2);
 	HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_3);
 	HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_4);
-	HAL_Delay(100);
+	delay(ms);
 	HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_2);
 	HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_3);
 	HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_4);

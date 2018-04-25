@@ -458,10 +458,11 @@ void LCD_DrawLine(uint8_t Xpos, uint16_t Ypos, uint16_t Length, uint8_t Directio
   * @retval None
   */
 void LCD_DrawRect(uint8_t Xpos, uint16_t Ypos, uint8_t Height, uint16_t Width)
-{
-  LCD_DrawLine(Xpos, Ypos, Width, Horizontal);
+{ 
+	for(int i = 0; i < Height; i++){
+  LCD_DrawLine(Xpos+i, Ypos, Width, Horizontal);
   LCD_DrawLine((Xpos + Height), Ypos, Width, Horizontal);
-  
+	}
   LCD_DrawLine(Xpos, Ypos, Height, Vertical);
   LCD_DrawLine(Xpos, (Ypos - Width + 1), Height, Vertical);
 }

@@ -262,6 +262,7 @@ typedef struct
 #define Red            0xF800
 #define Magenta        0xF81F
 #define Green          0x07E0
+#define Green2          0xd9ff
 #define Cyan           0x7FFF
 #define Yellow         0xFFE0
 #define Line0          0
