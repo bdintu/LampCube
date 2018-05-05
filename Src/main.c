@@ -107,7 +107,6 @@ int main(void)
 
   /* USER CODE BEGIN Init */
 	char str[80];
-
 	RGB color;
 	RGB rgb = {1,1,1};
 
@@ -258,16 +257,16 @@ int main(void)
 	} else {
 		switch (fsr_drive) {
 			case 1 :
-				pwm_delay = 100;
+				pwm_delay = 32;
 			break;
 			case 2 :
-				pwm_delay = 50;
+				pwm_delay = 16;
 			break;
 			case 3 :
-				pwm_delay = 10;
+				pwm_delay = 8;
 			break;
 			case 4 :
-				pwm_delay = 5;
+				pwm_delay = 4;
 			break;
 			case 5 :
 				pwm_delay = 1;
