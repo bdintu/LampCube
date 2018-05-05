@@ -112,8 +112,9 @@ int main(void)
 
 	volatile uint16_t fsr_val;	/* Force Sensitive Resistor : PC5 */
 	uint16_t fsr_level;
-	uint16_t fsr_drive = 5;
 	uint16_t fsr_max = 0;
+	uint16_t col_drive = 5;
+	uint16_t feq_drive = 5;
 
 	uint16_t posX, posY;
 	uint32_t pwm_delay = 1;
@@ -237,46 +238,59 @@ int main(void)
 	fsr_val = HAL_ADC_GetValue(&hadc1);
 
 	fsr_level = fsr_val / ((4096/9)+1);
-
-	if (fsr_level > 0 && fsr_max < fsr_level) {
-		fsr_max = fsr_level;
-	} else if (fsr_level == 0 && fsr_max != 0) {
-		fsr_drive = fsr_max;
-		if (fsr_drive > 5) {
-			fsr_drive = 5;
+		
+	if (sw_mode == 0) {
+		if (fsr_level > 0 && fsr_max < fsr_level) {
+			fsr_max = fsr_level;
+		} else if (fsr_level == 0 && fsr_max != 0) {
+			col_drive = fsr_max;
+			if (col_drive > 5) {
+				col_drive = 5;
+			}
+			fsr_max = 0;
 		}
-		fsr_max = 0;
+
+		GPIOE->ODR =  led_hex[ (fsr_max == 0) ? col_drive : fsr_level ];
+	} else {
+
+		if (fsr_level > 0 && fsr_max < fsr_level) {
+			fsr_max = fsr_level;
+		} else if (fsr_level == 0 && fsr_max != 0) {
+			feq_drive = fsr_max;
+			if (feq_drive > 5) {
+				feq_drive = 5;
+			}
+			fsr_max = 0;
+		}
+
+		GPIOE->ODR =  led_hex[ (fsr_max == 0) ? feq_drive : fsr_level ];
 	}
 
-	GPIOE->ODR =  led_hex[ (fsr_max == 0) ? fsr_drive : fsr_level ];
+	rgb.r = color.r * (col_drive/5.0);
+	rgb.g = color.g * (col_drive/5.0);
+	rgb.b = color.b * (col_drive/5.0);
 
-	if (sw_mode == 0) {
-		rgb.r = color.r * (fsr_drive/5.0);
-		rgb.g = color.g * (fsr_drive/5.0);
-		rgb.b = color.b * (fsr_drive/5.0);
-	} else {
-		switch (fsr_drive) {
-			case 1 :
-				pwm_delay = 32;
-			break;
-			case 2 :
-				pwm_delay = 16;
-			break;
-			case 3 :
-				pwm_delay = 8;
-			break;
-			case 4 :
-				pwm_delay = 4;
-			break;
-			case 5 :
-				pwm_delay = 1;
-			break;			
-		}
+	switch (feq_drive) {
+		case 1 :
+			pwm_delay = 1;
+		break;
+		case 2 :
+			pwm_delay = 4;
+		break;
+		case 3 :
+			pwm_delay = 8;
+		break;
+		case 4 :
+			pwm_delay = 16;
+		break;
+		case 5 :
+			pwm_delay = 32;
+		break;			
 	}
 
 	RGB_PWM(&rgb, pwm_delay);
 
-	sprintf(str, "R:%4.2f, G:%4.2f, B:%4.2f, Mode: %d, Drive: %d, FSR:0x%03X, Level:%1d, posX %d, posY %d.\r\n", rgb.r, rgb.g, rgb.b, sw_mode, fsr_drive, fsr_val, fsr_level, posX,posY);
+	sprintf(str, "R:%4.2f, G:%4.2f, B:%4.2f, Mode: %d, col_drive: %d, feq_drive: %d, Level:%1d, posX %d, posY %d.\r\n", rgb.r, rgb.g, rgb.b, sw_mode, col_drive, feq_drive, fsr_level, posX,posY);
 	UART_TRAN(str);
   }
   /* USER CODE END 3 */
